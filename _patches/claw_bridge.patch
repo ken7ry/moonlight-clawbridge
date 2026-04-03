@@ -20,10 +20,10 @@ index 9fb043d..3e39c20 100644
      streaming/audio/renderers/sdl.h \
 diff --git a/app/streaming/input/clawbridge.cpp b/app/streaming/input/clawbridge.cpp
 new file mode 100644
-index 0000000..581bbef
+index 0000000..61eca70
 --- /dev/null
 +++ b/app/streaming/input/clawbridge.cpp
-@@ -0,0 +1,376 @@
+@@ -0,0 +1,363 @@
 +#include "clawbridge.h"
 +#include "streaming/session.h"
 +
@@ -43,7 +43,6 @@ index 0000000..581bbef
 +
 +// ================================================================
 +// Safe push: checks SDL_PushEvent return, frees on failure
-+// Special handling for CB_EV_TEXT (heap->str needs delete[])
 +// ================================================================
 +template<typename PAYLOAD>
 +static void push(CB_Uint32 evType, const PAYLOAD& p)
@@ -56,7 +55,6 @@ index 0000000..581bbef
 +    ev.user.data2   = nullptr;
 +    if (SDL_PushEvent(&ev) < 0) {
 +        if (evType == CB_EV_TEXT) {
-+            // Release the dynamically allocated string before deleting struct
 +            CBEvt_Txt* txtPayload = reinterpret_cast<CBEvt_Txt*>(heap);
 +            delete[] txtPayload->str;
 +        }
@@ -65,7 +63,7 @@ index 0000000..581bbef
 +}
 +
 +// ================================================================
-+// Constructor — start TCP listener on :9999
++// Constructor
 +// ================================================================
 +ClawBridgeServer::ClawBridgeServer(QObject* parent)
 +    : QObject(parent)
@@ -109,7 +107,6 @@ index 0000000..581bbef
 +        connect(sock, &QTcpSocket::disconnected,
 +                this, &ClawBridgeServer::onDisconnect);
 +
-+        // Auto-kick after 5 min idle
 +        QTimer* idle = new QTimer(sock);
 +        idle->setSingleShot(true);
 +        idle->setInterval(300000);
@@ -123,7 +120,6 @@ index 0000000..581bbef
 +{
 +    QTcpSocket* sock = qobject_cast<QTcpSocket*>(sender());
 +    if (!sock) return;
-+    // Cap line length to 1024 bytes to prevent OOM from malicious/incomplete input
 +    while (sock->canReadLine()) {
 +        QString line = QString::fromUtf8(sock->readLine(1024)).trimmed();
 +        if (line.isEmpty()) continue;
@@ -135,6 +131,7 @@ index 0000000..581bbef
 +{
 +    QTcpSocket* sock = qobject_cast<QTcpSocket*>(sender());
 +    if (sock) {
++        sock->disconnect();
 +        m_clients.removeAll(sock);
 +        sock->deleteLater();
 +        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[ClawBridge] Disconnected");
@@ -142,16 +139,7 @@ index 0000000..581bbef
 +}
 +
 +// ================================================================
-+// Command parser — ALL injection goes through SDL event push
-+// (No direct LiSend* calls — must be on the main thread)
-+//
-+// GP:NAME_DOWN / GP:NAME_UP   -> gamepad
-+// KB:NAME_DOWN / KB:NAME_UP   -> keyboard
-+// MB:BTN_DOWN / MB:BTN_UP     -> mouse button
-+// MV:DX,DY                    -> mouse move
-+// WH:VAL                      -> vertical scroll
-+// HS:VAL                      -> horizontal scroll
-+// TXT:content                 -> text (UTF-8)
++// Command parser
 +// ================================================================
 +void ClawBridgeServer::parseLine(const QString& raw)
 +{
@@ -168,7 +156,7 @@ index 0000000..581bbef
 +        CB_Uint32 flag = nameToButton(part);
 +        if (flag == 0) return;
 +
-+        push<CBEvt_Gp>(CB_EV_GAMEPAD, { flag, pressed ? SDL_PRESSED : SDL_RELEASED });
++        push<CBEvt_Gp>(CB_EV_GAMEPAD, { flag, static_cast<CB_Uint8>(pressed ? SDL_PRESSED : SDL_RELEASED) });
 +        return;
 +    }
 +
@@ -183,7 +171,7 @@ index 0000000..581bbef
 +        CB_short vk = nameToKeyCode(part);
 +        if (vk == 0) return;
 +
-+        push<CBEvt_Kb>(CB_EV_KEYBOARD, { vk, pressed ? SDL_PRESSED : SDL_RELEASED, 0 });
++        push<CBEvt_Kb>(CB_EV_KEYBOARD, { vk, static_cast<CB_Uint8>(pressed ? SDL_PRESSED : SDL_RELEASED), 0 });
 +        return;
 +    }
 +
@@ -198,7 +186,7 @@ index 0000000..581bbef
 +        CB_Uint8 btn = nameToMouseBtn(part);
 +        if (btn == 0) return;
 +
-+        push<CBEvt_Mb>(CB_EV_MOUSEBTN, { btn, pressed ? SDL_PRESSED : SDL_RELEASED });
++        push<CBEvt_Mb>(CB_EV_MOUSEBTN, { btn, static_cast<CB_Uint8>(pressed ? SDL_PRESSED : SDL_RELEASED) });
 +        return;
 +    }
 +
@@ -250,8 +238,7 @@ index 0000000..581bbef
 +// ================================================================
 +CB_Uint32 ClawBridgeServer::nameToButton(const QString& name)
 +{
-+    // Hex passthrough
-+    if (name.startsWith("0X") || name.startsWith("0x")) {
++    if (name.length() >= 3 && name[0] == '0' && (name[1] == 'x' || name[1] == 'X')) {
 +        bool ok;
 +        uint val = name.mid(2).toUInt(&ok, 16);
 +        if (ok) return val;
@@ -316,7 +303,7 @@ index 0000000..581bbef
 +        return 0x41 + (name[0].toUpper().unicode() - 'A');
 +    if (name.length() == 1 && name[0].isDigit())
 +        return 0x30 + name[0].unicode() - '0';
-+    if (name.startsWith("F") && name.length() >= 2) {
++    if (name.length() >= 2 && name.startsWith("F")) {
 +        bool ok;
 +        int n = name.mid(1).toInt(&ok);
 +        if (ok && n >= 1 && n <= 12) return 0x70 + n - 1;
@@ -379,7 +366,7 @@ index 0000000..581bbef
 +        { "NUMLOCK",  0x90 },
 +    };
 +
-+    QByteArray ba = name.toUpper().toLatin1();
++    QByteArray ba = name.toLatin1();
 +    for (auto& e : map) {
 +        if (ba == e.n) return e.v;
 +    }
@@ -459,7 +446,7 @@ index 0000000..2fc5d47
 +    QList<QTcpSocket*>   m_clients;
 +};
 diff --git a/app/streaming/input/input.cpp b/app/streaming/input/input.cpp
-index 192f721..bbd7a2d 100644
+index 192f721..f40104f 100644
 --- a/app/streaming/input/input.cpp
 +++ b/app/streaming/input/input.cpp
 @@ -4,6 +4,7 @@
@@ -480,31 +467,29 @@ index 192f721..bbd7a2d 100644
  {
      // System keys are always captured when running without a DE
      if (!WMUtils::isRunningDesktopEnvironment()) {
-@@ -195,10 +197,17 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
+@@ -195,10 +197,15 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
      SDL_zero(m_LastTouchDownEvent);
      SDL_zero(m_LastTouchUpEvent);
      SDL_zero(m_TouchDownEvent);
 +
-+    // ====== ClawBridge ======
 +    m_cmdServer = new ClawBridgeServer(nullptr);
  }
  
  SdlInputHandler::~SdlInputHandler()
  {
-+    // Cleanup ClawBridge
 +    delete m_cmdServer;
 +    m_cmdServer = nullptr;
 +
      for (int i = 0; i < MAX_GAMEPADS; i++) {
          if (m_GamepadState[i].mouseEmulationTimer != 0) {
              Session::get()->notifyMouseEmulationMode(false);
-@@ -449,3 +458,55 @@ void SdlInputHandler::handleTouchFingerEvent(SDL_TouchFingerEvent* event)
+@@ -449,3 +456,54 @@ void SdlInputHandler::handleTouchFingerEvent(SDL_TouchFingerEvent* event)
          handleRelativeFingerEvent(event);
      }
  }
 +
 +
-+// ====== ClawBridge: event injection implementations ======
++// ====== ClawBridge: event injection ======
 +
 +void SdlInputHandler::cbInjectGamepad(Uint32 buttonFlag, Uint8 action)
 +{
@@ -519,8 +504,7 @@ index 192f721..bbd7a2d 100644
 +            sendGamepadState(&m_GamepadState[i]);
 +        return;
 +    }
-+    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-+                "[ClawBridge] No active controller");
++    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[ClawBridge] No active controller");
 +}
 +
 +void SdlInputHandler::cbInjectKeyboard(short vk, Uint8 action, char mods)
@@ -555,7 +539,7 @@ index 192f721..bbd7a2d 100644
 +        LiSendUtf8TextEvent(utf8str, (unsigned int)strlen(utf8str));
 +}
 diff --git a/app/streaming/input/input.h b/app/streaming/input/input.h
-index 20bbbc3..c754cd0 100644
+index 20bbbc3..fd1be0d 100644
 --- a/app/streaming/input/input.h
 +++ b/app/streaming/input/input.h
 @@ -3,6 +3,9 @@
@@ -568,12 +552,13 @@ index 20bbbc3..c754cd0 100644
  #include "SDL_compat.h"
  
  struct GamepadState {
-@@ -248,4 +251,14 @@ private:
+@@ -248,4 +251,16 @@ private:
      int m_NumFingersDown;
  
      static const int k_ButtonMap[];
 +
-+    // --- ClawBridge: TCP remote event injection ---
++    // --- ClawBridge: TCP remote event injection (must be public for session.cpp) ---
++public:
 +    void cbInjectGamepad(Uint32 buttonFlag, Uint8 action);
 +    void cbInjectKeyboard(short vk, Uint8 action, char mods);
 +    void cbInjectMouseButton(Uint8 button, Uint8 action);
@@ -581,6 +566,7 @@ index 20bbbc3..c754cd0 100644
 +    void cbInjectMouseMove(short dx, short dy);
 +    void cbInjectText(const char* utf8str);
 +
++private:
 +    ClawBridgeServer* m_cmdServer = nullptr;
  };
 diff --git a/app/streaming/session.cpp b/app/streaming/session.cpp
