@@ -24,7 +24,7 @@ index 0000000..61eca70
 --- /dev/null
 +++ b/app/streaming/input/clawbridge.cpp
 @@ -0,0 +1,363 @@
-+#include "clawbridge.h"
++#include "input/clawbridge.h"
 +#include "streaming/session.h"
 +
 +#include <Limelight.h>
@@ -453,7 +453,7 @@ index 192f721..6e55eb5 100644
  #include "settings/mappingmanager.h"
  #include "path.h"
  #include "utils.h"
-+#include "clawbridge.h"
++#include "input/clawbridge.h"
  
  #include <QtGlobal>
  #include <QDir>
@@ -563,12 +563,12 @@ index 20bbbc3..5ac6073 100644
 +    ClawBridgeServer* m_cmdServer = nullptr;
  };
 diff --git a/app/streaming/session.cpp b/app/streaming/session.cpp
-index 4952b60..9c8ba4a 100644
+index 4952b60..12c80dc 100644
 --- a/app/streaming/session.cpp
 +++ b/app/streaming/session.cpp
 @@ -1,4 +1,5 @@
  #include "session.h"
-+#include "clawbridge.h"
++#include "streaming/input/clawbridge.h"
  #include "settings/streamingpreferences.h"
  #include "streaming/streamutils.h"
  #include "backend/richpresencemanager.h"
