@@ -30,7 +30,7 @@ jobs:
       - name: Apply ClawBridge patch
         working-directory: moonlight-qt
         run: |
-          git apply ../my_repo/claw_bridge.patch
+          git apply ../my_repo/_patches/claw_bridge.patch
           git diff --stat HEAD
 
       - name: Install Qt 6
