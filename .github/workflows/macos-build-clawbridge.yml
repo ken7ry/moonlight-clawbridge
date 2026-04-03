@@ -49,14 +49,19 @@ jobs:
           qmake ../../moonlight-qt.pro QMAKE_APPLE_DEVICE_ARCHS="x86_64 arm64" CONFIG+=release
           make -j$(sysctl -n hw.ncpu)
           macdeployqt app/Moonlight.app -qmldir=$PWD/../../app/gui -appstore-compliant -dmg
-          mv app/Moonlight.dmg "../Moonlight-${VERSION}-macOS-Universal.dmg"
-          ls -lh ../*.dmg
+          DMG_OUT="../Moonlight-${VERSION}-macOS-Universal.dmg"
+          mv app/Moonlight.dmg "$DMG_OUT"
+          ls -lh "$DMG_OUT"
+          # Copy DMG to my_repo so upload-artifact can find it
+          cp "$DMG_OUT" ../../../my_repo/
+          echo "DMG copied to my_repo/"
 
       - name: Upload DMG
+        working-directory: moonlight-qt
         uses: actions/upload-artifact@v4
         with:
           name: Moonlight-ClawBridge-macOS-Universal
-          path: moonlight-qt/Moonlight-*-macOS-Universal.dmg
+          path: Moonlight-*.dmg
           compression-level: 0
           retention-days: 30
           if-no-files-found: error
