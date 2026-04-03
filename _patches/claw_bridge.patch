@@ -24,7 +24,7 @@ index 0000000..61eca70
 --- /dev/null
 +++ b/app/streaming/input/clawbridge.cpp
 @@ -0,0 +1,363 @@
-+#include "input/clawbridge.h"
++#include "clawbridge.h"
 +#include "streaming/session.h"
 +
 +#include <Limelight.h>
@@ -453,7 +453,7 @@ index 192f721..6e55eb5 100644
  #include "settings/mappingmanager.h"
  #include "path.h"
  #include "utils.h"
-+#include "input/clawbridge.h"
++#include "clawbridge.h"
  
  #include <QtGlobal>
  #include <QDir>
@@ -532,20 +532,19 @@ index 192f721..6e55eb5 100644
 +        LiSendUtf8TextEvent(utf8str, (unsigned int)strlen(utf8str));
 +}
 diff --git a/app/streaming/input/input.h b/app/streaming/input/input.h
-index 20bbbc3..5ac6073 100644
+index 20bbbc3..c5b4b3c 100644
 --- a/app/streaming/input/input.h
 +++ b/app/streaming/input/input.h
-@@ -3,6 +3,9 @@
+@@ -2,6 +2,8 @@
+ 
  #include "settings/streamingpreferences.h"
  #include "backend/computermanager.h"
- 
 +#include <Limelight.h>
 +class ClawBridgeServer;
-+
+ 
  #include "SDL_compat.h"
  
- struct GamepadState {
-@@ -248,4 +251,16 @@ private:
+@@ -248,4 +250,16 @@ private:
      int m_NumFingersDown;
  
      static const int k_ButtonMap[];
