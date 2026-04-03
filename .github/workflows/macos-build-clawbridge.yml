@@ -43,18 +43,13 @@ jobs:
         run: |
           set -e
           VERSION=$(cat app/version.txt)-clawbridge
-          BUILD_DIR="$PWD/build/Release"
-          mkdir -p "$BUILD_DIR"
-          cd "$BUILD_DIR"
+          mkdir -p build/Release
+          cd build/Release
           qmake ../../moonlight-qt.pro QMAKE_APPLE_DEVICE_ARCHS="x86_64 arm64" CONFIG+=release
           make -j$(sysctl -n hw.ncpu)
-          macdeployqt app/Moonlight.app -qmldir=$PWD/../../app/gui -appstore-compliant -dmg
-          DMG_OUT="../Moonlight-${VERSION}-macOS-Universal.dmg"
-          mv app/Moonlight.dmg "$DMG_OUT"
-          ls -lh "$DMG_OUT"
-          # Copy DMG to my_repo so upload-artifact can find it
-          cp "$DMG_OUT" ../../../my_repo/
-          echo "DMG copied to my_repo/"
+          macdeployqt app/Moonlight.app -qmldir=$PWD/../../app/gui -dmg
+          mv app/Moonlight.dmg "../../Moonlight-${VERSION}-macOS-Universal.dmg"
+          ls -lh "../../Moonlight-${VERSION}-macOS-Universal.dmg"
 
       - name: Upload DMG
         working-directory: moonlight-qt
