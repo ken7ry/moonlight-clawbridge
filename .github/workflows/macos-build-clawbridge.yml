@@ -1,0 +1,62 @@
+name: Moonlight-Qt + ClawBridge (macOS)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    runs-on: macos-15
+    env:
+      QT_VERSION: '6.10.2'
+
+    steps:
+      - name: Checkout moonlight-qt source
+        uses: actions/checkout@v4
+        with:
+          repository: moonlight-stream/moonlight-qt
+          submodules: recursive
+          fetch-depth: 1
+          path: moonlight-qt
+
+      - name: Checkout ClawBridge patch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          path: my_repo
+
+      - name: Apply ClawBridge patch
+        working-directory: moonlight-qt
+        run: |
+          git apply ../my_repo/claw_bridge.patch
+          git diff --stat HEAD
+
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+
+      - name: qmake build and create DMG
+        working-directory: moonlight-qt
+        run: |
+          set -e
+          VERSION=$(cat app/version.txt)-clawbridge
+          BUILD_DIR="$PWD/build/Release"
+          mkdir -p "$BUILD_DIR"
+          cd "$BUILD_DIR"
+          qmake ../../moonlight-qt.pro QMAKE_APPLE_DEVICE_ARCHS="x86_64 arm64" CONFIG+=release
+          make -j$(sysctl -n hw.ncpu)
+          macdeployqt app/Moonlight.app -qmldir=$PWD/../../app/gui -appstore-compliant -dmg
+          mv app/Moonlight.dmg "../Moonlight-${VERSION}-macOS-Universal.dmg"
+          ls -lh ../*.dmg
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: Moonlight-ClawBridge-macOS-Universal
+          path: moonlight-qt/Moonlight-*-macOS-Universal.dmg
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
