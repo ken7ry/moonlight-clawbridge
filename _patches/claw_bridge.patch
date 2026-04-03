@@ -446,7 +446,7 @@ index 0000000..2fc5d47
 +    QList<QTcpSocket*>   m_clients;
 +};
 diff --git a/app/streaming/input/input.cpp b/app/streaming/input/input.cpp
-index 192f721..f40104f 100644
+index 192f721..6e55eb5 100644
 --- a/app/streaming/input/input.cpp
 +++ b/app/streaming/input/input.cpp
 @@ -4,6 +4,7 @@
@@ -467,7 +467,7 @@ index 192f721..f40104f 100644
  {
      // System keys are always captured when running without a DE
      if (!WMUtils::isRunningDesktopEnvironment()) {
-@@ -195,10 +197,15 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
+@@ -195,6 +197,8 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
      SDL_zero(m_LastTouchDownEvent);
      SDL_zero(m_LastTouchUpEvent);
      SDL_zero(m_TouchDownEvent);
@@ -476,14 +476,7 @@ index 192f721..f40104f 100644
  }
  
  SdlInputHandler::~SdlInputHandler()
- {
-+    delete m_cmdServer;
-+    m_cmdServer = nullptr;
-+
-     for (int i = 0; i < MAX_GAMEPADS; i++) {
-         if (m_GamepadState[i].mouseEmulationTimer != 0) {
-             Session::get()->notifyMouseEmulationMode(false);
-@@ -449,3 +456,54 @@ void SdlInputHandler::handleTouchFingerEvent(SDL_TouchFingerEvent* event)
+@@ -449,3 +453,54 @@ void SdlInputHandler::handleTouchFingerEvent(SDL_TouchFingerEvent* event)
          handleRelativeFingerEvent(event);
      }
  }
@@ -539,7 +532,7 @@ index 192f721..f40104f 100644
 +        LiSendUtf8TextEvent(utf8str, (unsigned int)strlen(utf8str));
 +}
 diff --git a/app/streaming/input/input.h b/app/streaming/input/input.h
-index 20bbbc3..fd1be0d 100644
+index 20bbbc3..5ac6073 100644
 --- a/app/streaming/input/input.h
 +++ b/app/streaming/input/input.h
 @@ -3,6 +3,9 @@
@@ -557,7 +550,7 @@ index 20bbbc3..fd1be0d 100644
  
      static const int k_ButtonMap[];
 +
-+    // --- ClawBridge: TCP remote event injection (must be public for session.cpp) ---
++    // --- ClawBridge: TCP remote event injection ---
 +public:
 +    void cbInjectGamepad(Uint32 buttonFlag, Uint8 action);
 +    void cbInjectKeyboard(short vk, Uint8 action, char mods);
@@ -570,10 +563,16 @@ index 20bbbc3..fd1be0d 100644
 +    ClawBridgeServer* m_cmdServer = nullptr;
  };
 diff --git a/app/streaming/session.cpp b/app/streaming/session.cpp
-index 4952b60..a035ec7 100644
+index 4952b60..9c8ba4a 100644
 --- a/app/streaming/session.cpp
 +++ b/app/streaming/session.cpp
-@@ -2280,6 +2280,63 @@ void Session::exec()
+@@ -1,4 +1,5 @@
+ #include "session.h"
++#include "clawbridge.h"
+ #include "settings/streamingpreferences.h"
+ #include "streaming/streamutils.h"
+ #include "backend/richpresencemanager.h"
+@@ -2280,6 +2281,63 @@ void Session::exec()
          case SDL_FINGERUP:
              m_InputHandler->handleTouchFingerEvent(&event.tfinger);
              break;
