@@ -486,7 +486,7 @@ index 192f721..bbd7a2d 100644
      SDL_zero(m_TouchDownEvent);
 +
 +    // ====== ClawBridge ======
-+    m_cmdServer = new ClawBridgeServer(this);
++    m_cmdServer = new ClawBridgeServer(nullptr);
  }
  
  SdlInputHandler::~SdlInputHandler()
