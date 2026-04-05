@@ -11,6 +11,8 @@ jobs:
     runs-on: macos-15
     env:
       QT_VERSION: '6.10.2'
+      APP_NAME: 'Moonlight ClawBridge'
+      DMG_NAME: Moonlight-ClawBridge
 
     steps:
       - name: Checkout moonlight-qt source
@@ -38,24 +40,47 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
 
-      - name: qmake build and create DMG
+      - name: qmake build
         working-directory: moonlight-qt
         run: |
           set -e
-          VERSION=$(cat app/version.txt)-clawbridge
-          mkdir -p build/Release
-          cd build/Release
+          BUILD_DIR="$PWD/build/Release"
+          mkdir -p "$BUILD_DIR"
+          cd "$BUILD_DIR"
           qmake ../../moonlight-qt.pro QMAKE_APPLE_DEVICE_ARCHS="x86_64 arm64" CONFIG+=release
           make -j$(sysctl -n hw.ncpu)
+
+      - name: Branding + create DMG
+        working-directory: moonlight-qt
+        run: |
+          set -e
+          VERSION=$(cat app/version.txt)
+          BUILD_DIR="$PWD/build/Release"
+
+          # 1) Info.plist — display name
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.clawbridge.ClawBridge" app/Info.plist
+          echo "✅ Display name → $APP_NAME"
+
+          # 2) Run macdeployqt
+          cd "$BUILD_DIR"
           macdeployqt app/Moonlight.app -qmldir=$PWD/../../app/gui -dmg
-          mv app/Moonlight.dmg "../../Moonlight-${VERSION}-macOS-Universal.dmg"
-          ls -lh "../../Moonlight-${VERSION}-macOS-Universal.dmg"
+
+          # 3) Rename .app and .dmg
+          mv app/Moonlight.app "app/${APP_NAME}.app"
+          mv app/Moonlight.dmg "app/${APP_NAME}.dmg"
+
+          # 4) Move final DMG to moonlight-qt root
+          DMG_OUT="../../${DMG_NAME}-${VERSION}-macOS-Universal.dmg"
+          mv "app/${APP_NAME}.dmg" "$DMG_OUT"
+          ls -lh "$DMG_OUT"
 
       - name: Upload DMG
+        working-directory: moonlight-qt
         uses: actions/upload-artifact@v4
         with:
           name: Moonlight-ClawBridge-macOS-Universal
-          path: moonlight-qt/Moonlight-*.dmg
+          path: Moonlight-ClawBridge-*.dmg
           compression-level: 0
           retention-days: 30
           if-no-files-found: error
