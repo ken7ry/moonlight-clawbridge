@@ -11,8 +11,8 @@ jobs:
     runs-on: macos-15
     env:
       QT_VERSION: '6.10.2'
-      APP_NAME: 'Moonlight ClawBridge'
-      DMG_NAME: Moonlight-ClawBridge
+      APP_BIN: Moonlight-ClawBridge
+      APP_DISPLAY: 'Moonlight ClawBridge'
 
     steps:
       - name: Checkout moonlight-qt source
@@ -35,6 +35,19 @@ jobs:
           git apply ../my_repo/_patches/claw_bridge.patch
           git diff --stat HEAD
 
+      - name: Branding — rename app BEFORE build
+        working-directory: moonlight-qt
+        run: |
+          set -e
+          sed -i '' 's/TARGET = moonlight/TARGET = $APP_BIN/g' app/app.pro
+          sed -i '' 's/TARGET = Moonlight/TARGET = $APP_BIN/g' app/app.pro
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_DISPLAY" app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $APP_BIN" app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.clawbridge.ClawBridge" app/Info.plist
+          echo "=== Verify ==="
+          grep "TARGET" app/app.pro
+          grep "CFBundle" app/Info.plist | grep -i "display\|executable\|identifier"
+
       - name: Install Qt 6
         uses: jurplel/install-qt-action@v4
         with:
@@ -49,30 +62,19 @@ jobs:
           cd "$BUILD_DIR"
           qmake ../../moonlight-qt.pro QMAKE_APPLE_DEVICE_ARCHS="x86_64 arm64" CONFIG+=release
           make -j$(sysctl -n hw.ncpu)
+          echo "=== Built .app ==="
+          ls -la app/
 
-      - name: Branding + create DMG
+      - name: Create DMG
         working-directory: moonlight-qt
         run: |
           set -e
           VERSION=$(cat app/version.txt)
           BUILD_DIR="$PWD/build/Release"
-
-          # 1) Info.plist — display name
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" app/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.clawbridge.ClawBridge" app/Info.plist
-          echo "✅ Display name → $APP_NAME"
-
-          # 2) Run macdeployqt
           cd "$BUILD_DIR"
-          macdeployqt app/Moonlight.app -qmldir=$PWD/../../app/gui -dmg
-
-          # 3) Rename .app and .dmg
-          mv app/Moonlight.app "app/${APP_NAME}.app"
-          mv app/Moonlight.dmg "app/${APP_NAME}.dmg"
-
-          # 4) Move final DMG to moonlight-qt root
-          DMG_OUT="../../${DMG_NAME}-${VERSION}-macOS-Universal.dmg"
-          mv "app/${APP_NAME}.dmg" "$DMG_OUT"
+          macdeployqt app/$APP_BIN.app -qmldir=$PWD/../../app/gui -dmg
+          DMG_OUT="../../Moonlight-ClawBridge-${VERSION}-macOS-Universal.dmg"
+          mv app/$APP_BIN.dmg "$DMG_OUT"
           ls -lh "$DMG_OUT"
 
       - name: Upload DMG
