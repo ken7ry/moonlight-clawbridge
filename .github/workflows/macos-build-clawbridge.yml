@@ -39,14 +39,21 @@ jobs:
         working-directory: moonlight-qt
         run: |
           set -e
-          sed -i '' 's/TARGET = moonlight/TARGET = $APP_BIN/g' app/app.pro
-          sed -i '' 's/TARGET = Moonlight/TARGET = $APP_BIN/g' app/app.pro
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_DISPLAY" app/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $APP_BIN" app/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.clawbridge.ClawBridge" app/Info.plist
-          echo "=== Verify ==="
+          echo "Original TARGET lines:"
           grep "TARGET" app/app.pro
-          grep "CFBundle" app/Info.plist | grep -i "display\|executable\|identifier"
+          
+          # Replace both TARGET lines (lowercase moonlight and uppercase Moonlight)
+          sed -i '' 's/TARGET = moonlight/TARGET = Moonlight-ClawBridge/g' app/app.pro
+          sed -i '' 's/TARGET = Moonlight/TARGET = Moonlight-ClawBridge/g' app/app.pro
+          
+          # Update Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Moonlight ClawBridge" app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Moonlight-ClawBridge" app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.clawbridge.ClawBridge" app/Info.plist
+          
+          echo "After rebranding:"
+          grep "TARGET" app/app.pro
+          echo "✅ Branding done"
 
       - name: Install Qt 6
         uses: jurplel/install-qt-action@v4
@@ -72,9 +79,9 @@ jobs:
           VERSION=$(cat app/version.txt)
           BUILD_DIR="$PWD/build/Release"
           cd "$BUILD_DIR"
-          macdeployqt app/$APP_BIN.app -qmldir=$PWD/../../app/gui -dmg
+          macdeployqt app/Moonlight-ClawBridge.app -qmldir=$PWD/../../app/gui -dmg
           DMG_OUT="../../Moonlight-ClawBridge-${VERSION}-macOS-Universal.dmg"
-          mv app/$APP_BIN.dmg "$DMG_OUT"
+          mv app/Moonlight-ClawBridge.dmg "$DMG_OUT"
           ls -lh "$DMG_OUT"
 
       - name: Upload DMG
