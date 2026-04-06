@@ -1,0 +1,94 @@
+name: Moonlight-Qt + ClawBridge (macOS)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    runs-on: macos-15
+    env:
+      QT_VERSION: '6.10.2'
+      APP_BIN: Moonlight-ClawBridge
+      APP_DISPLAY: 'Moonlight ClawBridge'
+
+    steps:
+      - name: Checkout moonlight-qt source
+        uses: actions/checkout@v4
+        with:
+          repository: moonlight-stream/moonlight-qt
+          submodules: recursive
+          fetch-depth: 1
+          path: moonlight-qt
+
+      - name: Checkout ClawBridge files
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          path: my_repo
+
+      - name: Apply ClawBridge patch
+        working-directory: moonlight-qt
+        run: |
+          git apply ../my_repo/_patches/claw_bridge.patch
+          git diff --stat HEAD
+
+      - name: Branding — rename app BEFORE build
+        working-directory: moonlight-qt
+        run: |
+          set -e
+          echo "Original TARGET lines:"
+          grep "TARGET" app/app.pro
+          
+          # Replace both TARGET lines (lowercase moonlight and uppercase Moonlight)
+          sed -i '' 's/TARGET = moonlight/TARGET = Moonlight-ClawBridge/g' app/app.pro
+          sed -i '' 's/TARGET = Moonlight/TARGET = Moonlight-ClawBridge/g' app/app.pro
+          
+          # Update Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Moonlight ClawBridge" app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Moonlight-ClawBridge" app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.clawbridge.ClawBridge" app/Info.plist
+          
+          echo "After rebranding:"
+          grep "TARGET" app/app.pro
+          echo "✅ Branding done"
+
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+
+      - name: qmake build
+        working-directory: moonlight-qt
+        run: |
+          set -e
+          BUILD_DIR="$PWD/build/Release"
+          mkdir -p "$BUILD_DIR"
+          cd "$BUILD_DIR"
+          qmake ../../moonlight-qt.pro QMAKE_APPLE_DEVICE_ARCHS="x86_64 arm64" CONFIG+=release
+          make -j$(sysctl -n hw.ncpu)
+          echo "=== Built .app ==="
+          ls -la app/
+
+      - name: Create DMG
+        working-directory: moonlight-qt
+        run: |
+          set -e
+          VERSION=$(cat app/version.txt)
+          BUILD_DIR="$PWD/build/Release"
+          cd "$BUILD_DIR"
+          macdeployqt app/Moonlight-ClawBridge.app -qmldir=$PWD/../../app/gui -dmg
+          DMG_OUT="../../Moonlight-ClawBridge-${VERSION}-macOS-Universal.dmg"
+          mv app/Moonlight-ClawBridge.dmg "$DMG_OUT"
+          ls -lh "$DMG_OUT"
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: Moonlight-ClawBridge-macOS-Universal
+          path: moonlight-qt/Moonlight-ClawBridge-*.dmg
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
