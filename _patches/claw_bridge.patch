@@ -20,10 +20,10 @@ index 9fb043d..3e39c20 100644
      streaming/audio/renderers/sdl.h \
 diff --git a/app/streaming/input/clawbridge.cpp b/app/streaming/input/clawbridge.cpp
 new file mode 100644
-index 0000000..39bdb0b
+index 0000000..19170f9
 --- /dev/null
 +++ b/app/streaming/input/clawbridge.cpp
-@@ -0,0 +1,401 @@
+@@ -0,0 +1,406 @@
 +#include "clawbridge.h"
 +#include "streaming/session.h"
 +
@@ -380,6 +380,11 @@ index 0000000..39bdb0b
 +// ================================================================
 +CB_Uint8 ClawBridgeServer::nameToMouseBtn(const QString& name)
 +{
++    // Numeric buttons: 1=left, 2=middle, 3=right, 4=X1, 5=X2
++    bool ok = false;
++    int n = name.toInt(&ok);
++    if (ok && n >= 1 && n <= 5) return (CB_Uint8)n;
++
 +    if (name == "LEFT"   || name == "BTN_LEFT")   return 1;
 +    if (name == "RIGHT"  || name == "BTN_RIGHT")  return 3;
 +    if (name == "MIDDLE" || name == "BTN_MIDDLE" || name == "WHEEL") return 2;
