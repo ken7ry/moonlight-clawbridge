@@ -354,6 +354,11 @@ CB_short ClawBridgeServer::nameToKeyCode(const QString& name)
 // ================================================================
 CB_Uint8 ClawBridgeServer::nameToMouseBtn(const QString& name)
 {
+    // Numeric buttons: 1=left, 2=middle, 3=right, 4=X1, 5=X2
+    bool ok = false;
+    int n = name.toInt(&ok);
+    if (ok && n >= 1 && n <= 5) return (CB_Uint8)n;
+
     if (name == "LEFT"   || name == "BTN_LEFT")   return 1;
     if (name == "RIGHT"  || name == "BTN_RIGHT")  return 3;
     if (name == "MIDDLE" || name == "BTN_MIDDLE" || name == "WHEEL") return 2;
