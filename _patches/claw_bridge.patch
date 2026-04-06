@@ -20,10 +20,10 @@ index 9fb043d..3e39c20 100644
      streaming/audio/renderers/sdl.h \
 diff --git a/app/streaming/input/clawbridge.cpp b/app/streaming/input/clawbridge.cpp
 new file mode 100644
-index 0000000..e2ae504
+index 0000000..39bdb0b
 --- /dev/null
 +++ b/app/streaming/input/clawbridge.cpp
-@@ -0,0 +1,411 @@
+@@ -0,0 +1,401 @@
 +#include "clawbridge.h"
 +#include "streaming/session.h"
 +
@@ -33,24 +33,14 @@ index 0000000..e2ae504
 +#include <algorithm>
 +
 +// ================================================================
-+// Virtual gamepad state (persisted across calls)
++// Virtual gamepad state (NOT registered as system controller)
++// Keyboard and gamepad work independently — no input conflict!
 +// ================================================================
-+static struct VirtCtrl {
-+    int buttonFlags = 0;
++static struct {
++    int     buttonFlags = 0;
 +    unsigned char lt = 0, rt = 0;
-+    short lsX = 0, lsY = 0, rsX = 0, rsY = 0;
-+    bool active = false;
-+
-+    // Send full controller event
-+    void send() {
-+        if (!active) {
-+            // Register virtual controller on first use
-+            LiSendControllerArrivalEvent(0, 0x1, 0x01 /* XBOX */, 0xFFFF /* all buttons */, 0);
-+            active = true;
-+        }
-+        LiSendControllerEvent(buttonFlags, lt, rt, lsX, lsY, rsX, rsY);
-+    }
-+} g_virtCtrl;
++    short   lsX = 0, lsY = 0, rsX = 0, rsY = 0;
++} g_cbCtrl;
 +
 +// ================================================================
 +// Safe push helpers
@@ -507,7 +497,7 @@ index 0000000..25ed087
 +    QList<QTcpSocket*>   m_clients;
 +};
 diff --git a/app/streaming/input/input.cpp b/app/streaming/input/input.cpp
-index 192f721..9c2c187 100644
+index 192f721..7d83821 100644
 --- a/app/streaming/input/input.cpp
 +++ b/app/streaming/input/input.cpp
 @@ -4,6 +4,7 @@
@@ -544,36 +534,34 @@ index 192f721..9c2c187 100644
      for (int i = 0; i < MAX_GAMEPADS; i++) {
          if (m_GamepadState[i].mouseEmulationTimer != 0) {
              Session::get()->notifyMouseEmulationMode(false);
-@@ -449,3 +456,82 @@ void SdlInputHandler::handleTouchFingerEvent(SDL_TouchFingerEvent* event)
+@@ -449,3 +456,74 @@ void SdlInputHandler::handleTouchFingerEvent(SDL_TouchFingerEvent* event)
          handleRelativeFingerEvent(event);
      }
  }
 +
 +
-+// ====== ClawBridge: event injection (main thread only) ======
++// ====== ClawBridge: direct LiSend* calls ======
++// No ArrivalEvent — keyboard and gamepad work independently!
 +
-+// Virtual gamepad state — no physical controller needed
 +static struct {
-+    int     buttonFlags = 0;
++    int     btn = 0;
 +    unsigned char lt = 0, rt = 0;
 +    short   lsX = 0, lsY = 0, rsX = 0, rsY = 0;
-+    bool    active    = false;
-+} g_virt;
++} g_cbCtrl;
++
++static void cbSendCtrl()
++{
++    LiSendControllerEvent(g_cbCtrl.btn, g_cbCtrl.lt, g_cbCtrl.rt,
++                          g_cbCtrl.lsX, g_cbCtrl.lsY, g_cbCtrl.rsX, g_cbCtrl.rsY);
++}
 +
 +void SdlInputHandler::cbInjectGamepad(unsigned int buttonFlag, unsigned char action)
 +{
-+    bool pressed = (action == SDL_PRESSED);
-+    if (pressed)
-+        g_virt.buttonFlags |= (int)buttonFlag;
++    if (action == SDL_PRESSED)
++        g_cbCtrl.btn |= (int)buttonFlag;
 +    else
-+        g_virt.buttonFlags &= ~(int)buttonFlag;
-+
-+    if (!g_virt.active) {
-+        LiSendControllerArrivalEvent(0, 0x1, 0x01, 0xFFFF, 0);
-+        g_virt.active = true;
-+    }
-+    LiSendControllerEvent(g_virt.buttonFlags, g_virt.lt, g_virt.rt,
-+                          g_virt.lsX, g_virt.lsY, g_virt.rsX, g_virt.rsY);
++        g_cbCtrl.btn &= ~(int)buttonFlag;
++    cbSendCtrl();
 +}
 +
 +void SdlInputHandler::cbInjectKeyboard(short vk, unsigned char action, char mods)
@@ -610,16 +598,10 @@ index 192f721..9c2c187 100644
 +void SdlInputHandler::cbInjectJoystick(short lx, short ly, short rx, short ry,
 +                                        unsigned char lt, unsigned char rt)
 +{
-+    g_virt.lsX = lx;  g_virt.lsY = ly;
-+    g_virt.rsX = rx;  g_virt.rsY = ry;
-+    if (lt != 0 || rt != 0) { g_virt.lt = lt; g_virt.rt = rt; }
-+
-+    if (!g_virt.active) {
-+        LiSendControllerArrivalEvent(0, 0x1, 0x01, 0xFFFF, 0);
-+        g_virt.active = true;
-+    }
-+    LiSendControllerEvent(g_virt.buttonFlags, g_virt.lt, g_virt.rt,
-+                          g_virt.lsX, g_virt.lsY, g_virt.rsX, g_virt.rsY);
++    if (lt != 0 || rt != 0) { g_cbCtrl.lt = lt; g_cbCtrl.rt = rt; }
++    g_cbCtrl.lsX = lx; g_cbCtrl.lsY = ly;
++    g_cbCtrl.rsX = rx; g_cbCtrl.rsY = ry;
++    cbSendCtrl();
 +}
 +
 +void SdlInputHandler::cbInjectText(const char* utf8str)
@@ -628,7 +610,7 @@ index 192f721..9c2c187 100644
 +        LiSendUtf8TextEvent(utf8str, (unsigned int)strlen(utf8str));
 +}
 diff --git a/app/streaming/input/input.h b/app/streaming/input/input.h
-index 20bbbc3..1faae95 100644
+index 20bbbc3..42a0709 100644
 --- a/app/streaming/input/input.h
 +++ b/app/streaming/input/input.h
 @@ -2,6 +2,8 @@
@@ -640,7 +622,7 @@ index 20bbbc3..1faae95 100644
  
  #include "SDL_compat.h"
  
-@@ -248,4 +250,18 @@ private:
+@@ -248,4 +250,19 @@ private:
      int m_NumFingersDown;
  
      static const int k_ButtonMap[];
@@ -653,14 +635,15 @@ index 20bbbc3..1faae95 100644
 +    void cbInjectScroll(short dx, short dy);
 +    void cbInjectMouseMove(short dx, short dy);
 +    void cbInjectMousePosition(short x, short y, short w, short h);
-+    void cbInjectJoystick(short lx, short ly, short rx, short ry, unsigned char lt, unsigned char rt);
++    void cbInjectJoystick(short lx, short ly, short rx, short ry,
++                          unsigned char lt, unsigned char rt);
 +    void cbInjectText(const char* utf8str);
 +
 +private:
 +    ClawBridgeServer* m_cmdServer = nullptr;
  };
 diff --git a/app/streaming/session.cpp b/app/streaming/session.cpp
-index 4952b60..c3f0f55 100644
+index 4952b60..ef57a91 100644
 --- a/app/streaming/session.cpp
 +++ b/app/streaming/session.cpp
 @@ -1,4 +1,5 @@
@@ -669,12 +652,11 @@ index 4952b60..c3f0f55 100644
  #include "settings/streamingpreferences.h"
  #include "streaming/streamutils.h"
  #include "backend/richpresencemanager.h"
-@@ -2280,6 +2281,73 @@ void Session::exec()
+@@ -2280,6 +2281,72 @@ void Session::exec()
          case SDL_FINGERUP:
              m_InputHandler->handleTouchFingerEvent(&event.tfinger);
              break;
 +
-+        // ====== ClawBridge custom SDL events ======
 +        case CB_EV_GAMEPAD: {
 +            auto* p = static_cast<CBEvt_Gp*>(event.user.data1);
 +            if (p) {
