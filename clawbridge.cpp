@@ -7,24 +7,14 @@
 #include <algorithm>
 
 // ================================================================
-// Virtual gamepad state (persisted across calls)
+// Virtual gamepad state (NOT registered as system controller)
+// Keyboard and gamepad work independently — no input conflict!
 // ================================================================
-static struct VirtCtrl {
-    int buttonFlags = 0;
+static struct {
+    int     buttonFlags = 0;
     unsigned char lt = 0, rt = 0;
-    short lsX = 0, lsY = 0, rsX = 0, rsY = 0;
-    bool active = false;
-
-    // Send full controller event
-    void send() {
-        if (!active) {
-            // Register virtual controller on first use
-            LiSendControllerArrivalEvent(0, 0x1, 0x01 /* XBOX */, 0xFFFF /* all buttons */, 0);
-            active = true;
-        }
-        LiSendControllerEvent(buttonFlags, lt, rt, lsX, lsY, rsX, rsY);
-    }
-} g_virtCtrl;
+    short   lsX = 0, lsY = 0, rsX = 0, rsY = 0;
+} g_cbCtrl;
 
 // ================================================================
 // Safe push helpers
