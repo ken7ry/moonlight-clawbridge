@@ -432,77 +432,280 @@ index 0000000..19170f9
 +}
 diff --git a/app/streaming/input/clawbridge.h b/app/streaming/input/clawbridge.h
 new file mode 100644
-index 0000000..25ed087
+index 0000000..42a0709
 --- /dev/null
 +++ b/app/streaming/input/clawbridge.h
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,268 @@
 +#pragma once
 +
-+#include <QTcpServer>
-+#include <QTcpSocket>
-+#include <QTimer>
-+#include <QList>
-+#include <QString>
-+#include <QObject>
++#include "settings/streamingpreferences.h"
++#include "backend/computermanager.h"
++#include <Limelight.h>
++class ClawBridgeServer;
++
 +#include "SDL_compat.h"
 +
-+// ================================================================
-+// ClawBridge — TCP Remote Controller for Moonlight-Qt
-+// Virtual gamepad (no physical controller needed) + joysticks
-+// ================================================================
++struct GamepadState {
++    SDL_GameController* controller;
++    SDL_JoystickID jsId;
++    short index;
 +
-+// Custom SDL event types
-+#define CB_EV_GAMEPAD    (SDL_USEREVENT + 101)
-+#define CB_EV_KEYBOARD   (SDL_USEREVENT + 102)
-+#define CB_EV_MOUSEBTN   (SDL_USEREVENT + 103)
-+#define CB_EV_SCROLL     (SDL_USEREVENT + 104)
-+#define CB_EV_MOUSEMOVE  (SDL_USEREVENT + 105)
-+#define CB_EV_TEXT       (SDL_USEREVENT + 106)
-+#define CB_EV_MOUSEPOS   (SDL_USEREVENT + 107)
-+#define CB_EV_JOYSTICK   (SDL_USEREVENT + 108)
++#if !SDL_VERSION_ATLEAST(2, 0, 9)
++    SDL_Haptic* haptic;
++    int hapticMethod;
++    int hapticEffectId;
++#endif
 +
-+// Event payloads
-+struct CBEvt_Gp  { unsigned int flags; unsigned char action; };
-+struct CBEvt_Kb  { short vk;  unsigned char action; char mods; };
-+struct CBEvt_Mb  { unsigned char btn; unsigned char action; };
-+struct CBEvt_Wh  { short dx;  short dy; };
-+struct CBEvt_Mv  { short dx;  short dy; };
-+struct CBEvt_Mp  { short x;   short y;  short w;  short h; };
-+struct CBEvt_Js  { short lx;  short ly; short rx; short ry; unsigned char lt; unsigned char rt; };
-+struct CBEvt_Txt { char* str;
-+    explicit CBEvt_Txt(char* s = nullptr) : str(s) {}
-+    CBEvt_Txt(const CBEvt_Txt&)            = delete;
-+    CBEvt_Txt& operator=(const CBEvt_Txt&) = delete;
++    SDL_TimerID mouseEmulationTimer;
++    uint32_t lastStartDownTime;
++
++    bool clickpadButtonEmulationEnabled;
++    bool emulatedClickpadButtonDown;
++
++#if SDL_VERSION_ATLEAST(2, 0, 14)
++    uint8_t gyroReportPeriodMs;
++    float lastGyroEventData[SDL_arraysize(SDL_ControllerSensorEvent::data)];
++    uint32_t lastGyroEventTime;
++
++    uint8_t accelReportPeriodMs;
++    float lastAccelEventData[SDL_arraysize(SDL_ControllerSensorEvent::data)];
++    uint32_t lastAccelEventTime;
++#endif
++
++    int buttons;
++    short lsX, lsY;
++    short rsX, rsY;
++    unsigned char lt, rt;
 +};
 +
-+typedef unsigned int  CB_Uint32;
-+typedef unsigned char CB_Uint8;
-+typedef short         CB_short;
 +
-+class ClawBridgeServer : public QObject
++struct DualSenseOutputReport{
++    uint8_t validFlag0;
++    uint8_t validFlag1;
++
++    /* For DualShock 4 compatibility mode. */
++    uint8_t motorRight;
++    uint8_t motorLeft;
++
++    /* Audio controls */
++    uint8_t reserved[4];
++    uint8_t muteButtonLed;
++
++    uint8_t powerSaveControl;
++    uint8_t rightTriggerEffectType;
++    uint8_t rightTriggerEffect[DS_EFFECT_PAYLOAD_SIZE];
++    uint8_t leftTriggerEffectType;
++    uint8_t leftTriggerEffect[DS_EFFECT_PAYLOAD_SIZE];
++    uint8_t reserved2[6];
++
++    /* LEDs and lightbar */
++    uint8_t validFlag2;
++    uint8_t reserved3[2];
++    uint8_t lightbarSetup;
++    uint8_t ledBrightness;
++    uint8_t playerLeds;
++    uint8_t lightbarRed;
++    uint8_t lightbarGreen;
++    uint8_t lightbarBlue;
++};
++
++// activeGamepadMask is a short, so we're bounded by the number of mask bits
++#define MAX_GAMEPADS 16
++
++#define MAX_FINGERS 2
++
++#define GAMEPAD_HAPTIC_METHOD_NONE 0
++#define GAMEPAD_HAPTIC_METHOD_LEFTRIGHT 1
++#define GAMEPAD_HAPTIC_METHOD_SIMPLERUMBLE 2
++
++#define GAMEPAD_HAPTIC_SIMPLE_HIFREQ_MOTOR_WEIGHT 0.33
++#define GAMEPAD_HAPTIC_SIMPLE_LOWFREQ_MOTOR_WEIGHT 0.8
++
++class SdlInputHandler
 +{
-+    Q_OBJECT
-+
 +public:
-+    explicit ClawBridgeServer(QObject* parent = nullptr);
-+    ~ClawBridgeServer();
++    explicit SdlInputHandler(StreamingPreferences& prefs, int streamWidth, int streamHeight);
 +
-+private slots:
-+    void onNewConnection();
-+    void onReadyRead();
-+    void onDisconnect();
++    ~SdlInputHandler();
++
++    void setWindow(SDL_Window* window);
++
++    void handleKeyEvent(SDL_KeyboardEvent* event);
++
++    void handleMouseButtonEvent(SDL_MouseButtonEvent* event);
++
++    void handleMouseMotionEvent(SDL_MouseMotionEvent* event);
++
++    void handleMouseWheelEvent(SDL_MouseWheelEvent* event);
++
++    void handleControllerAxisEvent(SDL_ControllerAxisEvent* event);
++
++    void handleControllerButtonEvent(SDL_ControllerButtonEvent* event);
++
++    void handleControllerDeviceEvent(SDL_ControllerDeviceEvent* event);
++
++#if SDL_VERSION_ATLEAST(2, 0, 14)
++    void handleControllerSensorEvent(SDL_ControllerSensorEvent* event);
++
++    void handleControllerTouchpadEvent(SDL_ControllerTouchpadEvent* event);
++#endif
++
++#if SDL_VERSION_ATLEAST(2, 24, 0)
++    void handleJoystickBatteryEvent(SDL_JoyBatteryEvent* event);
++#endif
++
++    void handleJoystickArrivalEvent(SDL_JoyDeviceEvent* event);
++
++    void sendText(QString& string);
++
++    void rumble(uint16_t controllerNumber, uint16_t lowFreqMotor, uint16_t highFreqMotor);
++
++    void rumbleTriggers(uint16_t controllerNumber, uint16_t leftTrigger, uint16_t rightTrigger);
++
++    void setMotionEventState(uint16_t controllerNumber, uint8_t motionType, uint16_t reportRateHz);
++
++    void setControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, uint8_t b);
++
++    void setAdaptiveTriggers(uint16_t controllerNumber, DualSenseOutputReport *report);
++
++    void handleTouchFingerEvent(SDL_TouchFingerEvent* event);
++
++    int getAttachedGamepadMask();
++
++    void raiseAllKeys();
++
++    void notifyMouseLeave();
++
++    void notifyFocusLost();
++
++    void notifyFocusGained();
++
++    bool isCaptureActive();
++
++    bool isSystemKeyCaptureActive();
++
++    void setCaptureActive(bool active);
++
++    bool isMouseInVideoRegion(int mouseX, int mouseY, int windowWidth = -1, int windowHeight = -1);
++
++    void updateKeyboardGrabState();
++
++    void updatePointerRegionLock();
++
++    static
++    QString getUnmappedGamepads();
 +
 +private:
-+    void      parseLine(const QString& line);
-+    CB_Uint32 nameToButton(const QString& name);
-+    CB_short  nameToKeyCode(const QString& name);
-+    CB_Uint8  nameToMouseBtn(const QString& name);
++    enum KeyCombo {
++        KeyComboQuit,
++        KeyComboUngrabInput,
++        KeyComboToggleFullScreen,
++        KeyComboToggleStatsOverlay,
++        KeyComboToggleMouseMode,
++        KeyComboToggleCursorHide,
++        KeyComboToggleMinimize,
++        KeyComboPasteText,
++        KeyComboTogglePointerRegionLock,
++        KeyComboQuitAndExit,
++        KeyComboMax
++    };
 +
-+    QTcpServer*          m_server  = nullptr;
-+    QList<QTcpSocket*>   m_clients;
++    GamepadState*
++    findStateForGamepad(SDL_JoystickID id);
++
++    void sendGamepadState(GamepadState* state);
++
++    void sendGamepadBatteryState(GamepadState* state, SDL_JoystickPowerLevel level);
++
++    void handleAbsoluteFingerEvent(SDL_TouchFingerEvent* event);
++
++    void emulateAbsoluteFingerEvent(SDL_TouchFingerEvent* event);
++
++    void disableTouchFeedback();
++
++    void handleRelativeFingerEvent(SDL_TouchFingerEvent* event);
++
++    void performSpecialKeyCombo(KeyCombo combo);
++
++    static
++    Uint32 longPressTimerCallback(Uint32 interval, void* param);
++
++    static
++    Uint32 mouseEmulationTimerCallback(Uint32 interval, void* param);
++
++    static
++    Uint32 releaseLeftButtonTimerCallback(Uint32 interval, void* param);
++
++    static
++    Uint32 releaseRightButtonTimerCallback(Uint32 interval, void* param);
++
++    static
++    Uint32 dragTimerCallback(Uint32 interval, void* param);
++
++    SDL_Window* m_Window;
++    bool m_MultiController;
++    bool m_GamepadMouse;
++    bool m_SwapMouseButtons;
++    bool m_ReverseScrollDirection;
++    bool m_SwapFaceButtons;
++
++    bool m_MouseWasInVideoRegion;
++    bool m_PendingMouseButtonsAllUpOnVideoRegionLeave;
++    bool m_PointerRegionLockActive;
++    bool m_PointerRegionLockToggledByUser;
++
++    int m_GamepadMask;
++    GamepadState m_GamepadState[MAX_GAMEPADS];
++    QSet<short> m_KeysDown;
++    bool m_FakeCaptureActive;
++    QString m_OldIgnoreDevices;
++    QString m_OldIgnoreDevicesExcept;
++    QStringList m_IgnoreDeviceGuids;
++    StreamingPreferences::CaptureSysKeysMode m_CaptureSystemKeysMode;
++    int m_MouseCursorCapturedVisibilityState;
++
++    struct {
++        KeyCombo keyCombo;
++        SDL_Keycode keyCode;
++        SDL_Scancode scanCode;
++        bool enabled;
++    } m_SpecialKeyCombos[KeyComboMax];
++
++    SDL_TouchFingerEvent m_LastTouchDownEvent;
++    SDL_TouchFingerEvent m_LastTouchUpEvent;
++    SDL_TimerID m_LongPressTimer;
++    int m_StreamWidth;
++    int m_StreamHeight;
++    bool m_AbsoluteMouseMode;
++    bool m_AbsoluteTouchMode;
++    bool m_DisabledTouchFeedback;
++
++    SDL_TouchFingerEvent m_TouchDownEvent[MAX_FINGERS];
++    SDL_TimerID m_LeftButtonReleaseTimer;
++    SDL_TimerID m_RightButtonReleaseTimer;
++    SDL_TimerID m_DragTimer;
++    char m_DragButton;
++    int m_NumFingersDown;
++
++    static const int k_ButtonMap[];
++
++    // --- ClawBridge: TCP remote event injection ---
++public:
++    void cbInjectGamepad(unsigned int buttonFlag, unsigned char action);
++    void cbInjectKeyboard(short vk, unsigned char action, char mods);
++    void cbInjectMouseButton(unsigned char button, unsigned char action);
++    void cbInjectScroll(short dx, short dy);
++    void cbInjectMouseMove(short dx, short dy);
++    void cbInjectMousePosition(short x, short y, short w, short h);
++    void cbInjectJoystick(short lx, short ly, short rx, short ry,
++                          unsigned char lt, unsigned char rt);
++    void cbInjectText(const char* utf8str);
++
++private:
++    ClawBridgeServer* m_cmdServer = nullptr;
 +};
 diff --git a/app/streaming/input/input.cpp b/app/streaming/input/input.cpp
-index 192f721..7d83821 100644
+index 192f721..d815b74 100644
 --- a/app/streaming/input/input.cpp
 +++ b/app/streaming/input/input.cpp
 @@ -4,6 +4,7 @@
@@ -539,14 +742,13 @@ index 192f721..7d83821 100644
      for (int i = 0; i < MAX_GAMEPADS; i++) {
          if (m_GamepadState[i].mouseEmulationTimer != 0) {
              Session::get()->notifyMouseEmulationMode(false);
-@@ -449,3 +456,74 @@ void SdlInputHandler::handleTouchFingerEvent(SDL_TouchFingerEvent* event)
+@@ -449,3 +456,92 @@ void SdlInputHandler::handleTouchFingerEvent(SDL_TouchFingerEvent* event)
          handleRelativeFingerEvent(event);
      }
  }
 +
 +
 +// ====== ClawBridge: direct LiSend* calls ======
-+// No ArrivalEvent — keyboard and gamepad work independently!
 +
 +static struct {
 +    int     btn = 0;
@@ -560,6 +762,21 @@ index 192f721..7d83821 100644
 +                          g_cbCtrl.lsX, g_cbCtrl.lsY, g_cbCtrl.rsX, g_cbCtrl.rsY);
 +}
 +
++// FIX 2: Clear all gamepad input when keyboard/mouse arrives
++// Prevents gamepad state from "sticking" and interfering with keyboard
++static void cbClearGamepad()
++{
++    if (g_cbCtrl.btn != 0 || g_cbCtrl.lt != 0 || g_cbCtrl.rt != 0 ||
++        g_cbCtrl.lsX != 0 || g_cbCtrl.lsY != 0 ||
++        g_cbCtrl.rsX != 0 || g_cbCtrl.rsY != 0) {
++        g_cbCtrl.btn = 0;
++        g_cbCtrl.lt = 0; g_cbCtrl.rt = 0;
++        g_cbCtrl.lsX = 0; g_cbCtrl.lsY = 0;
++        g_cbCtrl.rsX = 0; g_cbCtrl.rsY = 0;
++        cbSendCtrl();
++    }
++}
++
 +void SdlInputHandler::cbInjectGamepad(unsigned int buttonFlag, unsigned char action)
 +{
 +    if (action == SDL_PRESSED)
@@ -571,6 +788,7 @@ index 192f721..7d83821 100644
 +
 +void SdlInputHandler::cbInjectKeyboard(short vk, unsigned char action, char mods)
 +{
++    cbClearGamepad();  // FIX 2: release gamepad before keyboard
 +    bool pressed = (action == SDL_PRESSED);
 +    LiSendKeyboardEvent(0x8000 | (vk & 0xFF),
 +                        pressed ? KEY_ACTION_DOWN : KEY_ACTION_UP,
@@ -579,6 +797,7 @@ index 192f721..7d83821 100644
 +
 +void SdlInputHandler::cbInjectMouseButton(unsigned char button, unsigned char action)
 +{
++    cbClearGamepad();  // FIX 2: release gamepad before mouse
 +    LiSendMouseButtonEvent(
 +        action == SDL_PRESSED ? BUTTON_ACTION_PRESS : BUTTON_ACTION_RELEASE,
 +        button);
@@ -597,6 +816,7 @@ index 192f721..7d83821 100644
 +
 +void SdlInputHandler::cbInjectMousePosition(short x, short y, short w, short h)
 +{
++    cbClearGamepad();
 +    LiSendMousePositionEvent(x, y, w, h);
 +}
 +
@@ -611,6 +831,7 @@ index 192f721..7d83821 100644
 +
 +void SdlInputHandler::cbInjectText(const char* utf8str)
 +{
++    cbClearGamepad();
 +    if (utf8str && utf8str[0])
 +        LiSendUtf8TextEvent(utf8str, (unsigned int)strlen(utf8str));
 +}
