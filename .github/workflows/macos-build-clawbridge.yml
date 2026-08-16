@@ -60,6 +60,9 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
 
+      - name: Install OpenSSL
+        run: brew install openssl@3
+
       - name: qmake build
         working-directory: moonlight-qt
         run: |
@@ -67,7 +70,12 @@ jobs:
           BUILD_DIR="$PWD/build/Release"
           mkdir -p "$BUILD_DIR"
           cd "$BUILD_DIR"
-          qmake ../../moonlight-qt.pro QMAKE_APPLE_DEVICE_ARCHS="x86_64 arm64" CONFIG+=release
+          OPENSSL_PREFIX=$(brew --prefix openssl@3)
+          qmake ../../moonlight-qt.pro \
+            QMAKE_APPLE_DEVICE_ARCHS="x86_64 arm64" \
+            CONFIG+=release \
+            INCLUDEPATH+="$OPENSSL_PREFIX/include" \
+            LIBS+="-L$OPENSSL_PREFIX/lib"
           make -j$(sysctl -n hw.ncpu)
           echo "=== Built .app ==="
           ls -la app/
