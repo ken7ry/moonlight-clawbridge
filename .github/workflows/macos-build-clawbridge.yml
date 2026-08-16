@@ -60,16 +60,6 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
 
-      - name: Install OpenSSL
-        run: brew install openssl@3
-
-      - name: Export OpenSSL env vars
-        run: |
-          prefix=$(brew --prefix openssl@3)
-          echo "CPPFLAGS=-I${prefix}/include" >> "$GITHUB_ENV"
-          echo "LDFLAGS=-L${prefix}/lib" >> "$GITHUB_ENV"
-          echo "PKG_CONFIG_PATH=${prefix}/lib/pkgconfig" >> "$GITHUB_ENV"
-
       - name: qmake build
         working-directory: moonlight-qt
         run: |
