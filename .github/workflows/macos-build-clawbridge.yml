@@ -99,7 +99,7 @@ jobs:
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: Moonlight-ClawBridge-macOS-arm64
+          name: Moonlight-ClawBridge-macOS-arm64-v33
           path: moonlight-qt/Moonlight-ClawBridge-*.dmg
           compression-level: 0
           retention-days: 30
