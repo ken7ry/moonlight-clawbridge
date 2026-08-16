@@ -92,7 +92,7 @@ jobs:
           BUILD_DIR="$PWD/build/Release"
           cd "$BUILD_DIR"
           macdeployqt app/Moonlight-ClawBridge.app -qmldir=$PWD/../../app/gui -dmg
-          DMG_OUT="../../Moonlight-ClawBridge-${VERSION}-macOS-Universal.dmg"
+          DMG_OUT="../../Moonlight-ClawBridge-macOS-arm64-${VERSION}.dmg"
           mv app/Moonlight-ClawBridge.dmg "$DMG_OUT"
           ls -lh "$DMG_OUT"
 
